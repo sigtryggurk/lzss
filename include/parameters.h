@@ -23,7 +23,7 @@
 #else
   #define MAX_MATCH_LEN ((1 << NBYTES_LEN) + MIN_MATCH_LEN - 1)
 #endif
-#define WINDOW_SIZE (1 << OFFSET_LEN)                       /* window size for possible matches */
+#define WINDOW_SIZE ((1 << OFFSET_LEN) + MIN_MATCH_LEN - 1)   /* window size for possible matches */
 #define BUFFER_SIZE (((COPY_BYTE_LEN + 7) >> 3) + 1)        /* max size of compression buffer */
 #define BUFFER_SIZE_BITS (BUFFER_SIZE << 3)
 
