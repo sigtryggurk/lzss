@@ -19,9 +19,9 @@
 #define COPY_BYTE_LEN (FLAG_LEN + OFFSET_LEN + NBYTES_LEN)  /* # bits in encoded */
 #define MIN_MATCH_LEN (COPY_BYTE_LEN/BYTE_LEN + 1)          /* min bytes for encoding */
 #if (OFFSET_LEN < NBYTES_LEN)
-#define MAX_MATCH_LEN ((1 << OFFSET_LEN) + MIN_MATCH_LEN)   /* max bytes for encoding */
+  #define MAX_MATCH_LEN ((1 << OFFSET_LEN) + MIN_MATCH_LEN - 1)   /* max bytes for encoding */
 #else
-#define MAX_MATCH_LEN ((1 << NBYTES_LEN) + MIN_MATCH_LEN)
+  #define MAX_MATCH_LEN ((1 << NBYTES_LEN) + MIN_MATCH_LEN - 1)
 #endif
 #define WINDOW_SIZE (1 << OFFSET_LEN)                       /* window size for possible matches */
 #define BUFFER_SIZE (((COPY_BYTE_LEN + 7) >> 3) + 1)        /* max size of compression buffer */
