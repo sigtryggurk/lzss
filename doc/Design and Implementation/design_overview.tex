@@ -1,0 +1,141 @@
+\documentclass[a4paper]{article}
+
+\usepackage[english]{babel}
+\usepackage[utf8x]{inputenc}
+\usepackage{amsmath}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage{float}
+\restylefloat{table}
+\usepackage{listings}
+\lstset{language=C++}
+\usepackage{enumerate}
+
+
+\title{Sliding Window Dictionary Encoding}
+\author{Sigtryggur Kjartansson}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Algorithm Overview}
+This compression scheme compresses/decompresses an input file according to the following sliding window dictionary encoding of the last \texttt{WINDOW\_SIZE} symbols encoded/decoded:\footnote{My implementation is generic, so you can set \texttt{OFFSET\_LEN} and \texttt{NBYTES\_LEN} to any ``reasonable" values (i.e. \texttt{len(copy byte) > len(byte)} and no guarantees on when \texttt{NBYTES\_LEN> OFFSET\_LEN}, although it has worked for couple of test values)}.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l||l|} 
+\hline
+unencoded ``byte" & 1-bit flag = 0\\
+ & 8-bit chat \\\hline
+encoded ``copy byte" & 1-bit flag = 1\\
+ & \texttt{OFFSET\_LEN}-bit offset (here 16)\\
+  & \texttt{NBYTES\_LEN}-bit length (here 6)\\
+  \hline
+\end{tabular}
+\caption{Encoding Scheme}
+\end{table}
+
+The algorithm tries to match as many unencoded symbols to symbols in the dictionary.
+The number of bits we choose for each affects the runtime of compression as well as the compression ratio we achieve. With \texttt{OFFSET\_LEN} bits for offsets we can encode \(2^\texttt{OFFSET\_LEN}\) different offsets and likewise with \texttt{NBYTES\_LEN} for lengths we can encode \(2^\texttt{NBYTES\_LEN}\).
+This means that the size of dictionary is a function of \(2^\texttt{OFFSET\_LEN}\) and the lengths of its values (length of matches) are a function of \(2^\texttt{NBYTES\_LEN}\) (see Length \& Offset Optimizations subsection for details).
+
+\subsection{When to Encode}
+  It's not worth it to encode if the encoding takes more bits than writing out individual  bytes. Here this minimum matching length is 3, generally this is given by  
+  \[\texttt{MIN\_MATCH\_LEN}=\frac{\texttt{COPY\_BYTE\_LEN}}{\texttt{BYTE\_LEN}} + 1 \]
+  
+\subsection{Encoding Steps}
+\begin{enumerate}
+\item Initialize dictionary
+\item Initialize an array of uncoded chars of \texttt{MAX\_MATCH\_LEN}.
+\item Search for longest match in dictionary.
+\item 
+   \begin{enumerate}
+    \item If match \(length > \texttt{MIN\_MATCH\_LEN}\): encode string as copy byte
+    \item Else: stream 1 byte
+   \end{enumerate}
+\item Add streamed bytes to dictionary and read in more uncoded chars
+\item Repeat from 3 until input has been encoded.
+\end{enumerate}
+\subsection{Decoding Steps}
+\begin{enumerate}
+\item Initialize the dictionary
+\item Read flag bit
+\item 
+   \begin{enumerate}
+   \item If 0: Read 1 char and write to output
+   \item Else: Read offset and length, and retrieve from dictionary and write to output
+   \end{enumerate}
+\item Add streamed bytes to dictionary 
+\item Repeat from 2 until input has been decoded
+\end{enumerate}
+
+
+\section{Design and Implementation}
+Here I highlight some the challenges and decisions I faced in design and implementation.
+\subsection{Which Programming Language}
+Because we're gonna be dealing with reading/writing at the bit level, for this reason I initially picked C, because it has pointers and efficiently handles bitwise arithmetic. I quickly realized that I would want to create some Objects for simplification and thus I picked C++. The language choice posed a few challenges in it's own, since I haven't programmed anything this extensive in C++.
+\subsection{Dictionary Representation}
+The dictionary is more like a sliding window of fixed length \texttt{WINDOW\_SIZE}, so the most natural and straight-forward way to represent it is with a circular char array buffer. It allows \(O(1)\) puts and let's us access \(k\) chars in \(O(k)\) time. 
+\subsection{Find Matches in Dictionary}
+The bottleneck of compression is finding the largest partial match at each step.
+I explored several different ways of searching for matches:
+
+\begin{enumerate}
+\item \textbf{Brute Force}\\
+Find the largest match for every possible starting positions and return the largest.\\
+Space: \(O(\texttt{WINDOW\_SIZE})\), TIME: \(O(\texttt{WINDOW\_SIZE} \cdot \texttt{MAX\_MATCH\_LEN})\)
+
+\item \textbf{Knuth-Morris-Prath}\\
+Uses a partial match table to skip some starting positions.\\
+Space: \(O(\texttt{WINDOW\_SIZE} + \texttt{MAX\_MATCH\_LEN})\), Worst Case TIME: \(O(\texttt{WINDOW\_SIZE} \cdot \texttt{MAX\_MATCH\_LEN})\), but the skipping makes it \(O(\texttt{WINDOW\_SIZE} + \texttt{MAX\_MATCH\_LEN})\)
+
+\item \textbf{Boyer-Moore}\\
+Regarded as the most efficient practical string matching algorithm. Uses two shift rules + pre-proccessing to cleverly skip checks.\\
+Space: \(O(\texttt{WINDOW\_SIZE} + \texttt{MAX\_MATCH\_LEN})\), Worst Case TIME: \(O(\texttt{WINDOW\_SIZE} \cdot \texttt{MAX\_MATCH\_LEN})\), but the skipping makes it \(O(\texttt{WINDOW\_SIZE} + \texttt{MAX\_MATCH\_LEN})\)
+
+\item \textbf{Balanced BST}\\
+Store Dictionary as a Balanced BST.\\
+Space: \(O(\texttt{WINDOW\_SIZE})\), Time: \(O(\log(\texttt{WINDOW\_SIZE}) + \texttt{MAX\_MATCH\_LEN})\)
+\end{enumerate}
+I implemented Brute Force for the MVP and so that I could have a bench mark for future improvements.
+Ultimately, I wanted to use either Boyer-Moore or BST, since they have the most attractive properties. I choice to do only KMP because:
+\begin{enumerate}[a)]
+\item Balanced BST requires implementing (or using existing) something like Splay Trees, AVL trees etc. with a modified search operation and I didn't have time to do so reliably.
+\item Boyer-Moore is not easily extensible to handle partial prefix matches, because it matches the pattern in reverse order. It's possible, but too time-consuming!
+\end{enumerate}
+
+I believe the the optimal choice is a BBST. Using KMP, I found, brought down the runtime by about a factor of 4.
+
+Additionally, I also considered Layered Hash Tables and Linked Lists but found that the other methods were more viable.
+\subsection{How to Denote Offset}
+We're given \texttt{OFFSET\_LEN} (here 16) bits to encode the offset. That means we can encode up to \(2^{16}\) different offsets. The scheme presented suggests using negative offsets from the current positions. It's wasteful to store negative numbers, so we won't do that and it's more convenient to store the offset as an index into the current window. Hence, an offset of 0 means the copy byte starts at the oldest value in the dictionary.
+\subsection{Bit-Packing vs. Wasting Bits}
+The proposed compression scheme uses poor bit lengths for its encoding (see Improvements:Choose Different Encoding Lengths for an alternative approach with ``better choices"). I had to choose between packing bits or wasting a couple of bits per encoding. I don't think it's acceptable for a compression scheme to waste 2 bits per encoding (we could have used those bits for longer lengths or larger windows), bit packing was the only option. I implemented efficient read and write classes for files (see BitReader and BitWriter)
+\subsection{Length \& Offset Optimizations}
+The minimum length a valid match can be is \texttt{MIN\_MATCH\_LEN} (here 3), so a minor optimization is to store the length as \(length - \texttt{MIN\_MATCH\_LEN}\). Similarly, the largest offset we can have is \texttt{MIN\_MATCH\_LEN} away from the current, so we can increase our window size by \texttt{MIN\_MATCH\_LEN}.
+
+\section{Further Discussion}
+\subsection{Improvements}
+\begin{enumerate}
+\item \textbf{Choose Different Encoding Lengths}\\ 
+If we chose the encoding lengths such that \(\texttt{OFFSET\_LEN} + \texttt{NBYTES\_LEN}\) was a multiple of 8, then we could pack 8 flags together in one byte and stream the rest as full bytes. This would allow us to avoid packing bytes across byte boundaries (which can be costly). This also suggests an easy improvement to I/0. In fact we can do this in the current implementation:
+\item \textbf{Bundle Reads}\\
+Most of the code reads/writes 1 char at a time (with a couple of efficient exceptions). I could refactor the code to read several entities at once, by packing a few flags together (e.g. 8), counting the number of 1's set and reading in the needed bytes.
+\item \textbf{Bundle Writes}\\
+Similarly, I could have the expand the write buffer to do larger writes less frequently.
+\item \textbf{Use Balanced BST}
+Probably the biggest improvement that could be made is using a BBST for matching. This was discussed in above sections.
+\item \textbf{Circular Buffer Class}\\
+A few places in the code use circular buffers. These could (and should) be wrapped up into a class for simplicity.
+\end{enumerate}
+
+
+\subsection{Extensions}
+\begin{enumerate}
+\item \textbf{Compress \texttt{UTF-8}}\\
+The code could be extended to also encode \texttt{UTF-8}. 
+We would have to either replace the ``byte" encoding unit with a longer one. Or create a new encoding unit and extend the flag to three bits and use a special flag for symbols that require more than just one byte. The \texttt{findmatch} logic would also have to be updated to reflect these changes.
+\end{enumerate}
+
+
+\end{document}
