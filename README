@@ -8,3 +8,9 @@ Getting Started:
 Running Test Suite:
   1) make
   2) test/runtests.sh
+
+Adding Test Case:
+  1) Add textfile to test/testcases
+
+
+Design Specs are located in doc directory
