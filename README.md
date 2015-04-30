@@ -16,4 +16,3 @@ Adding Test Case:
   1) Add textfile to test/testcases
 
 
-Design Specs are located in doc directory
