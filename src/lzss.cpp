@@ -6,7 +6,7 @@
 //  Copyright (c) 2015 Sigtryggur Kjartansson. All rights reserved.
 //
 
-#include "compression.h"
+#include "lzss.h"
 #include <stdlib.h>
 #include "parameters.h"
 #include "util.h"

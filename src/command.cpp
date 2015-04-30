@@ -12,7 +12,7 @@
 #include <sstream>
 #include <string.h>
 #include "parameters.h"
-#include "compression.h"
+#include "lzss.h"
 
 using namespace std;
 
